@@ -8,6 +8,8 @@ library(tidyverse)
 library(tidytuesdayR)
 #install.packages('DescTools')
 library(DescTools)
+install.packages('patchwork')
+library(patchwork)
 
 # Load Data -------------------------------------------------------------
 # Get data from source
@@ -121,27 +123,46 @@ record_changes %>%
   geom_line() +
   geom_point()
 
+# append the name of the cup that they're part of
+records <- records %>% 
+  mutate(
+    cup = case_when(
+      track %in% c('Luigi Raceway', 'Moo Moo Farm', 'Koopa Troopa Beach', 'Kalimari Desert') ~ 'Mushroom Cup',
+      track %in% c('Toad\'s Turnpike', 'Frappe Snowland', 'Choco Mountain', 'Mario Raceway') ~ 'Flower Cup',
+      track %in% c('Wario Stadium', 'Sherbert Land', 'Royal Raceway', 'Bowser\'s Castle') ~ 'Star Cup',
+      track %in% c('DK\'s Jungle Parkway', 'Yoshi Valley', 'Banshee Boardwalk', 'Rainbow Road') ~ 'Special Cup'      
+    )
+  ) 
 
 
-records %>% 
+NTSC_3Lap <- records %>% 
   filter(type == "Three Lap", 
-         system_played == 'PAL',
-         shortcut == "Yes"
+         system_played == 'NTSC'
          ) %>%
-  ggplot(aes(x = date, y = time, colour = track, group = track)) +
+  ggplot(aes(x = date, y = time, colour = shortcut, group = shortcut)) +
     geom_line() +
-    geom_point()
+    facet_wrap(~paste(cup, track)) + 
+    theme(legend.position = 'bottom',
+          panel.background = element_blank())
+
+NTSC_3Lap
+
+
+PAL_3Lap <- records %>% 
+  filter(type == "Three Lap", 
+         system_played == 'PAL'
+  ) %>%
+  ggplot(aes(x = date, y = time, colour = shortcut, group = shortcut)) +
+  geom_line() +
+  facet_wrap(~track)+ 
 
 
 
 
 
-
-
-
-
-
-
+PAL_3Lap + NTSC_3Lap + 
+  plot_layout(guides = 'collect') & 
+  theme(legend.position = 'bottom')
 
 
 
