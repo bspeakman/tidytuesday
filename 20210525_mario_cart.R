@@ -8,8 +8,13 @@ library(tidyverse)
 library(tidytuesdayR)
 #install.packages('DescTools')
 library(DescTools)
-install.packages('patchwork')
+#install.packages('patchwork')
 library(patchwork)
+
+#install.packages('gifski')
+#install.packages('png')
+#install.packages('gganimate')
+library(gganimate)
 
 # Load Data -------------------------------------------------------------
 # Get data from source
@@ -25,6 +30,17 @@ records <- tuesdata[['records']]
 # Have a look what we've got
 glimpse(drivers)
 glimpse(records)
+
+
+cup_tracks <- tuesdata[['records']] %>% select(track) %>% unique() %>% 
+  mutate(
+    cup = case_when(
+    track %in% c('Luigi Raceway', 'Moo Moo Farm', 'Koopa Troopa Beach', 'Kalimari Desert') ~ 'Mushroom Cup',
+    track %in% c('Toad\'s Turnpike', 'Frappe Snowland', 'Choco Mountain', 'Mario Raceway') ~ 'Flower Cup',
+    track %in% c('Wario Stadium', 'Sherbet Land', 'Royal Raceway', 'Bowser\'s Castle') ~ 'Star Cup',
+    track %in% c('D.K.\'s Jungle Parkway', 'Yoshi Valley', 'Banshee Boardwalk', 'Rainbow Road') ~ 'Special Cup'
+    )     
+  )
 
 # Ok so it looks like we've got a set of player data in "drivers" and their race data in "records"
 
@@ -100,77 +116,95 @@ records %>% summarise(min_year = min(lubridate::year(date)))
 # But first lets find something interesting to race
 # Which race type has the most records
 
-record_changes <- records %>% group_by(type, system_played, track, shortcut) %>% 
+records <- tuesdata[['records']] %>% 
+  # use conversion to set the time on a level playing field
+  mutate(time = ifelse(system_played == 'NTSC', time, time / 1.2024)) %>% 
+  group_by(type, track, shortcut) %>% 
+  arrange(type, track, shortcut, date, desc(time)) %>% 
+  mutate(lag_time = lag(time, 1, default = 9999)) %>% 
+  # tidy up any records that wouldn't have counted if all on the same system
+  filter(lag_time > time) %>% 
+  ungroup() 
+
+  # Toad's Turnpike has had the most players with the record at some point
+  records %>% 
+  group_by(type, track, shortcut) %>% 
   summarise(n = n(), 
             n_players = n_distinct(player),
             min_time = min(time),
             max_time = max(time),
             record_time_change = max_time - min_time
-            )
+            ) %>% arrange(desc(n_players))
 
-# Rainbow Road on NTSC looks the most exciting
-record_changes %>% arrange(desc(record_time_change))
-
-
-record_changes %>% 
-  filter(type == "Three Lap", 
-         system_played == 'PAL',
-         shortcut == "Yes"
-  ) %>%
-  select(track, min_time, max_time) %>% 
-  pivot_longer(cols = c(min_time, max_time), values_to = 'time', names_to = 'var') %>% 
-  ggplot(aes(x = var, y = time, colour = track, group = track)) +
-  geom_line() +
-  geom_point()
-
-# append the name of the cup that they're part of
-records <- records %>% 
+  # Rainbow Road has had the largest change in time for the record
+  records %>% 
+    group_by(type, track, shortcut) %>% 
+    summarise(n = n(), 
+              n_players = n_distinct(player),
+              min_time = min(time),
+              max_time = max(time),
+              record_time_change = max_time - min_time
+    ) %>% arrange(desc(record_time_change))
+  
+  
+rainbow_rd_records <- records %>% filter(
+  track == 'Rainbow Road',
+  type == 'Three Lap',
+  shortcut == 'Yes'
+  ) %>% 
   mutate(
-    cup = case_when(
-      track %in% c('Luigi Raceway', 'Moo Moo Farm', 'Koopa Troopa Beach', 'Kalimari Desert') ~ 'Mushroom Cup',
-      track %in% c('Toad\'s Turnpike', 'Frappe Snowland', 'Choco Mountain', 'Mario Raceway') ~ 'Flower Cup',
-      track %in% c('Wario Stadium', 'Sherbert Land', 'Royal Raceway', 'Bowser\'s Castle') ~ 'Star Cup',
-      track %in% c('DK\'s Jungle Parkway', 'Yoshi Valley', 'Banshee Boardwalk', 'Rainbow Road') ~ 'Special Cup'      
-    )
-  ) 
+    record_diff = time - min(time),
+    race_state = ifelse(time == min(time, na.rm = T), 'Winner', 'Racing')
+  )
+  
+
+toads_turnpike_records <- records %>% filter(
+  track == 'Toad\'s Turnpike',
+  type == 'Three Lap',
+  shortcut == 'Yes'
+)
 
 
-NTSC_3Lap <- records %>% 
-  filter(type == "Three Lap", 
-         system_played == 'NTSC'
-         ) %>%
-  ggplot(aes(x = date, y = time, colour = shortcut, group = shortcut)) +
-    geom_line() +
-    facet_wrap(~paste(cup, track)) + 
-    theme(legend.position = 'bottom',
-          panel.background = element_blank())
-
-NTSC_3Lap
-
-
-PAL_3Lap <- records %>% 
-  filter(type == "Three Lap", 
-         system_played == 'PAL'
-  ) %>%
-  ggplot(aes(x = date, y = time, colour = shortcut, group = shortcut)) +
-  geom_line() +
-  facet_wrap(~track)+ 
-
-
-
-
-
-PAL_3Lap + NTSC_3Lap + 
-  plot_layout(guides = 'collect') & 
-  theme(legend.position = 'bottom')
-
-
+p_rainbow_rd <- rainbow_rd_records %>% 
+  select(player, record_diff, race_state) %>% 
+  bind_rows(
+    rainbow_rd_records %>% 
+      select(player) %>% 
+      unique() %>% 
+      mutate(
+        record_diff = max(rainbow_rd_records$time) - min(rainbow_rd_records$time),
+        race_state = 'Racing'
+        )
+  ) %>% 
+  bind_rows(
+    rainbow_rd_records %>% 
+      filter(race_state == 'Winner') %>% 
+      mutate(record_diff = -25,
+             race_state = 'Winner'
+      )
+  ) %>% 
+  arrange(player, desc(record_diff)) %>% 
+  ggplot(aes(x = player, y = -record_diff)) +
+  geom_text(aes(label = player, colour = race_state)) +
+  coord_flip() +
+  geom_hline(yintercept = 50, size = 5) +
+  geom_hline(yintercept = 0, size = 5) +
+  annotate('text', y = 25, x = 7.5, label = 'FINISH', angle = 90, size = 15) +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank()
+  ) + 
+  scale_colour_manual(values = c('black', 'yellow'))
+p_rainbow_rd
 
 # Make the output into a a race chart cause
+anim <- p_rainbow_rd +
+  transition_reveal(-record_diff) +
+  labs(title = "Time")
 
 
-
-
+animate(anim)
 
 
 
