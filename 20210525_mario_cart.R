@@ -146,7 +146,12 @@ records <- tuesdata[['records']] %>%
               record_time_change = max_time - min_time
     ) %>% arrange(desc(record_time_change))
   
-  
+
+
+####################################################################################
+# Rainbow Road
+####################################################################################  
+    
 rainbow_rd_records <- records %>% filter(
   track == 'Rainbow Road',
   type == 'Three Lap',
@@ -154,15 +159,10 @@ rainbow_rd_records <- records %>% filter(
   ) %>% 
   mutate(
     record_diff = time - min(time),
-    race_state = ifelse(time == min(time, na.rm = T), 'Winner', 'Racing')
+    race_state = ifelse(time == min(time, na.rm = T), 'Winner', 'Racing'),
+    dummy = T
   )
   
-
-toads_turnpike_records <- records %>% filter(
-  track == 'Toad\'s Turnpike',
-  type == 'Three Lap',
-  shortcut == 'Yes'
-)
 
 
 p_rainbow_rd <- rainbow_rd_records %>% 
@@ -207,4 +207,64 @@ anim <- p_rainbow_rd +
 animate(anim)
 
 
+
+
+min_date <- min(rainbow_rd_records$date)
+max_date <- max(rainbow_rd_records$date)
+
+
+
+dates <- data.frame(date = seq(min_date, max_date, by="days")) %>% 
+  left_join(rainbow_rd_records, by = 'date') %>% 
+  select(date, record_time = time, next_record = time) %>% 
+  fill(record_time) %>%
+  fill(next_record, .direction = 'up') %>% 
+  mutate(dummy = T)
+
+p_rainbow_rd_2 <- rainbow_rd_records %>% 
+  inner_join(dates, by = 'dummy') %>% 
+  mutate(current_record_diff = record_time - time,
+         next_record_diff = time - next_record,
+         record_diff = ifelse(current_record_diff > 0, -1*current_record_diff, current_record_diff)) %>% 
+  filter(between(record_diff, -30, 0)) %>% 
+  select(player, date = date.y, record_diff, time) %>%  
+  arrange(date, time) %>% 
+    group_by(player, date) %>% 
+  slice_max(record_diff, n = 1) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = player, y = record_diff, frame = date)) +
+  geom_text(aes(label = player)) +
+  coord_flip() +
+#  geom_hline(yintercept = 50, size = 5) +
+#  geom_hline(yintercept = 0, size = 5) +
+#  annotate('text', y = 25, x = 7.5, label = 'FINISH', angle = 90, size = 15) +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank()
+  ) 
+
+
+animate(p_rainbow_rd_2)
+
+# Make the output into a a race chart cause
+anim <- p_rainbow_rd_2 +
+  transition_time(date) +
+  labs(title = "Year: {frame_time}")
+
+
+
+animate(anim, duration = nrow(dates)/200)
+
+
+
+####################################################################################
+# Toads Turnpike
+####################################################################################  
+
+toads_turnpike_records <- records %>% filter(
+  track == 'Toad\'s Turnpike',
+  type == 'Three Lap',
+  shortcut == 'Yes'
+)
 
