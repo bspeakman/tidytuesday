@@ -10,6 +10,7 @@ library(tidytuesdayR)
 library(DescTools)
 #install.packages('patchwork')
 library(patchwork)
+library(gganimate)
 #install.packages('skimr')
 library(skimr)
 #install.packages('ggmap')
@@ -52,29 +53,32 @@ stocked_tidy <- stocked %>%
   select(sid, year, month, latitude, longitude, lake, species, no_stocked) %>% 
   filter(longitude <= quantile(.$longitude, 0.99))
   
-stocked_tidy %>% 
-  ggplot(aes()) +
- +
-
-
-map <- get_stamenmap(bbox = c(left = min(stocked_tidy$longitude) - 1, 
-                                  right = quantile(stocked_tidy$longitude, 0.99) + 1,
-                                  top = max(stocked_tidy$latitude) + 1,
-                                  bottom = min(stocked_tidy$latitude) - 1), zoom = 6, maptype = 'terrain')
-
 # Final Chart -------------------------------------------------------------
 
 map <- get_stamenmap(bbox = c(left = -93, bottom = 41, right = -75.5, top = 49.5), zoom = 6, maptype = 'terrain-background')
 
-ggmap(map) + 
+p <- ggmap(map) + 
   theme_void() + 
   theme(
     plot.title = element_text(colour = "orange"), 
     panel.border = element_rect(colour = "grey", fill=NA, size=2)
   ) +
   geom_point(data = stocked_tidy, aes(x = longitude, y = latitude, 
-                                      colour = species, size = no_stocked), alpha = 0.1) +
-  facet_wrap(~year)  
+                                      colour = species, size = no_stocked)) +
+  facet_grid(rows =vars(species)) +
+  labs(title = 'Trout Fishing in the Great Lakes',
+       subtitle = 'Year: {frame_time}') +
+  theme(
+    legend.position = 'none'
+  ) +
+  transition_time(year, range = c(2000,2018)) + 
+  enter_fade() +
+  ease_aes('linear') +
+  exit_fade()
 
+
+
+animate(p, nframes = 19, fps = 1, height = 800, width = 600)
+anim_save("Trout.gif")
 
   
